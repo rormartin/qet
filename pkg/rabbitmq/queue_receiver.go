@@ -78,25 +78,33 @@ func NewRabbitMQReceiver(uri string, exchange RabbitMQExchange, queue RabbitMQQu
 	return &q
 }
 
-func (q *RabbitMQReceiver) Connect(msgs chan transform.DataBlock, done chan error, logger *log.Entry) error {
-	return q.ConnectProcessors(
+func (q *RabbitMQReceiver) Connect(
+	msgs chan transform.DataBlock,
+	done chan error,
+	logger *log.Entry) error {
+
+	return q.ConnectCustomRetry(
 		msgs,
 		done,
-		1,
-		1,
+		3,
 		func(retry int) int {
 			return 10000 * int(math.Pow(2.0, float64(retry)))
 		},
 		logger)
 }
 
-func (q *RabbitMQReceiver) ConnectProcessors(msgs chan transform.DataBlock, done chan error, maxRetries int, nprocessors int, retryExpirationCalc func(int) int, loggerInput *log.Entry) error {
+func (q *RabbitMQReceiver) ConnectCustomRetry(
+	msgs chan transform.DataBlock,
+	done chan error,
+	maxRetries int,
+	retryFuncTime func(int) int,
+	loggerInput *log.Entry) error {
 
 	logger := loggerInput.WithFields(log.Fields{"context": "Connect"})
 
-	err := q.Consumer(msgs, nprocessors, maxRetries, retryExpirationCalc, logger)
+	err := q.Consumer(msgs, maxRetries, retryFuncTime, logger)
 	if err != nil {
-		logger.Printf("error and shutting down: %v", err)
+		logger.Error("error and shutting down: %v", err)
 		defer q.Shutdown(logger)
 		return err
 	}
@@ -105,7 +113,7 @@ func (q *RabbitMQReceiver) ConnectProcessors(msgs chan transform.DataBlock, done
 
 }
 
-func (q *RabbitMQReceiver) Consumer(msgs chan transform.DataBlock, maxRetries int, nprocessors int, retryExpirationCalc func(int) int, logger *log.Entry) error {
+func (q *RabbitMQReceiver) Consumer(msgs chan transform.DataBlock, maxRetries int, retryExpirationCalc func(int) int, logger *log.Entry) error {
 
 	log := logger.WithFields(log.Fields{"context": "Consumer"})
 
@@ -182,9 +190,9 @@ func (q *RabbitMQReceiver) Consumer(msgs chan transform.DataBlock, maxRetries in
 	}
 
 	err = q.consumer.channel.Qos(
-		nprocessors, // prefetch count
-		0,           // prefetch size
-		false,       // global
+		1,     // prefetch count
+		0,     // prefetch size
+		false, // global
 	)
 	if err != nil {
 		return fmt.Errorf("Failed to set QoS: %v", err)
@@ -299,7 +307,7 @@ func handle(
 	logger := loggerInput.WithFields(log.Fields{"context": "handle"})
 
 	for d := range deliveries {
-		logger.Printf(
+		logger.Debugf(
 			"got %dB delivery: %q",
 			len(d.Body),
 			d.Body,
@@ -314,7 +322,7 @@ func handle(
 
 				// use the "free" requeue
 				if !msg.Redelivered {
-					log.Printf("Requeue with no redeliver")
+					log.Debugf("Re-queue with no re-delivery")
 					return d.Nack(false, !msg.Redelivered)
 				}
 
@@ -329,7 +337,7 @@ func handle(
 						retries = 0
 					}
 				}
-				log.Printf("Retries for message: %d", retries)
+				log.Debugf("Retries for message: %d", retries)
 				if retries >= maxRetries {
 					// just Nack and no republish
 					// eventually will end into the dead-letter exchange
@@ -337,7 +345,7 @@ func handle(
 					return d.Nack(false, false)
 				}
 
-				log.Printf("Republishing in retry queue")
+				log.Debugf("Republishing in retry queue")
 				if err := rePublish(
 					&msg,
 					retries,
@@ -353,7 +361,7 @@ func handle(
 				// everything it's Ok
 				// ACK to the original one
 				msg.Ack(false)
-				log.Println("Confirmed and ACK")
+				log.Debugf("Confirmed and ACK")
 				return nil
 			},
 		}
