@@ -96,7 +96,7 @@ func ProcessorOrch(
 		logger.Error("Error in queue: %v", err)
 	case s := <-signals:
 		logger.Printf("Gentle close")
-		// forward the signal for all the processors
+		// forward the signal to all the processors
 		for i := 0; i < concurrents; i++ {
 			signalsInternal <- s
 		}
