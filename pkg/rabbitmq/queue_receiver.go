@@ -102,7 +102,7 @@ func (q *RabbitMQReceiver) ConnectCustomRetry(
 
 	logger := loggerInput.WithFields(log.Fields{"context": "Connect"})
 
-	err := q.Consumer(msgs, maxRetries, retryFuncTime, logger)
+	err := q.startConsumer(msgs, maxRetries, retryFuncTime, logger)
 	if err != nil {
 		logger.Error("error and shutting down: %v", err)
 		defer q.Shutdown(logger)
@@ -113,7 +113,7 @@ func (q *RabbitMQReceiver) ConnectCustomRetry(
 
 }
 
-func (q *RabbitMQReceiver) Consumer(msgs chan transform.DataBlock, maxRetries int, retryExpirationCalc func(int) int, logger *log.Entry) error {
+func (q *RabbitMQReceiver) startConsumer(msgs chan transform.DataBlock, maxRetries int, retryExpirationCalc func(int) int, logger *log.Entry) error {
 
 	log := logger.WithFields(log.Fields{"context": "Consumer"})
 
