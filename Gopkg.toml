@@ -1,0 +1,24 @@
+# Gopkg.toml example
+#
+# Refer to https://github.com/golang/dep/blob/master/docs/Gopkg.toml.md
+# for detailed Gopkg.toml documentation.
+
+[[constraint]]
+  name = "github.com/imdario/mergo"
+  version = "0.3.4"
+
+[[constraint]]
+  name = "github.com/sirupsen/logrus"
+  version = "1.0.5"
+
+[[constraint]]
+  name = "github.com/streadway/amqp"
+  revision = "8e4aba63da9fc5571e01c6a45dc809a58cbc5a68"
+
+[[constraint]]
+  name = "github.com/stretchr/testify"
+  version = "1.2.1"
+
+[prune]
+  go-tests = true
+  unused-packages = true
