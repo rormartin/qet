@@ -1,11 +1,46 @@
 package rabbitmq
 
-// import (
-// 	"fmt"
-// 	"github.com/streadway/amqp"
-// 	"github.com/stretchr/testify/assert"
-// 	"testing"
-// )
+import (
+	// "fmt"
+	//	"github.com/streadway/amqp"
+	"github.com/stretchr/testify/assert"
+	"testing"
+)
+
+func TestNewRabbitMQ(t *testing.T) {
+
+	exchange := RabbitMQExchange{
+		Name:        "exchange_name",
+		Type:        "exchange_type",
+		Durable:     true,
+		AutoDeleted: false,
+		Internal:    false,
+		NoWait:      false,
+		Arguments:   nil,
+	}
+	queue := RabbitMQQueueDeclare{
+		Name:        "queue",
+		Durable:     true,
+		AutoDeleted: false,
+		Exclusive:   false,
+		NoWait:      false,
+		Arguments:   nil,
+	}
+
+	rabbit := NewRabbitMQReceiver(
+		"queue_uri",
+		exchange,
+		queue,
+		"queue_tag")
+
+	assert.Equal(t, rabbit.uri, "queue_uri")
+	assert.Equal(t, rabbit.consumerTag, "queue_tag")
+	assert.Equal(t, rabbit.exchange, exchange)
+	assert.Equal(t, rabbit.queue, queue)
+	assert.Equal(t, rabbit.routingKey, "")
+	assert.Nil(t, rabbit.consumer, nil)
+
+}
 
 // // fake interface implementation to test ACK calls
 // type fakeAcknowledger struct {
