@@ -9,11 +9,10 @@ import (
 	log "github.com/sirupsen/logrus"
 	"os"
 	"os/signal"
+	"runtime"
 	"strings"
 	"text/template"
 )
-
-const CONCURRENT_EXECUTIONS = 3
 
 var (
 	eventsTPL            *template.Template
@@ -89,6 +88,8 @@ func main() {
 		},
 		envQueueConsumerTag)
 
+	cpus := runtime.NumCPU()
+	logger.Printf("Running using %d parallel process", cpus)
 	err := transform.ProcessorOrch(
 		queue,
 		pg,
@@ -97,7 +98,7 @@ func main() {
 		inputStream,
 		signals,
 		logger,
-		CONCURRENT_EXECUTIONS)
+		cpus)
 
 	if err != nil {
 		os.Exit(1)
