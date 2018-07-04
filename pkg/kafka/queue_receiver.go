@@ -11,14 +11,18 @@ import (
 )
 
 type KafkaReceiver struct {
-	topic    string
-	group    string
 	brokers  []string
+	group    string
+	topic    string
 	shutdown func()
 }
 
-func NewKafkaReceiver() *KafkaReceiver {
-	q := KafkaReceiver{}
+func NewKafkaReceiver(brokers []string, group, topic string) *KafkaReceiver {
+	q := KafkaReceiver{
+		brokers: brokers,
+		group:   group,
+		topic:   topic,
+	}
 	return &q
 }
 
@@ -32,7 +36,7 @@ func (q *KafkaReceiver) Connect(
 		done,
 		3,
 		func(retry int) int {
-			return 10000 * int(math.Pow(2.0, float64(retry)))
+			return 1000 * int(math.Pow(2.0, float64(retry)))
 		},
 		logger)
 }
@@ -109,8 +113,7 @@ func kafkaMsgProcessor(
 
 		data := msg.([]byte)
 
-		result := make(chan bool, 1)
-		timeout := make(chan bool, 1)
+		result := make(chan bool, maxRetries+1)
 
 		db := transform.DataBlock{
 			Data: data,
@@ -122,30 +125,33 @@ func kafkaMsgProcessor(
 
 		retries := 0
 		// blocking waiting for response
-		select {
-		case res := <-result:
-			if res {
-				// it's ok, just finish and go for next message
-				return
-			}
-			// !res
-			// error, retry mechanism
-			if retries >= maxRetries {
-				// TODO: review what to do, error topic?
-				// not possible to recover from error
-				logger.Printf("Too much retries, not possible to process the message")
-				return
-			}
-			// timeout define by the function
-			go func() {
-				time.Sleep(time.Duration(retryExpirationCalc(retries)) * time.Millisecond)
-				timeout <- true
-			}()
+		for {
+			select {
+			case res := <-result:
+				if res {
+					// it's ok, just finish and go for next message
+					logger.Printf("Success on message process")
+					return
+				}
+				// !res
+				// error, retry mechanism
+				if retries >= maxRetries {
+					// TODO: review what to do, error topic?
+					// not possible to recover from error
+					logger.Warnf("Too much retries, not possible to process the message")
+					return
+				}
+				// timeout define by the function
+				delay := time.Duration(retryExpirationCalc(retries)) * time.Millisecond
+				logger.Debugf("Waiting on retry %v for %v", retries, delay)
+				timer := time.NewTimer(delay)
+				<-timer.C
 
-		case <-timeout:
-			// retry to process the message again
-			output <- db
-			retries++
+				// retry to process the message again
+				logger.Printf("Retry %v", retries)
+				output <- db
+				retries++
+			}
 		}
 	}
 }
