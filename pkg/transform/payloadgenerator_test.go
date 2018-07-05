@@ -9,16 +9,36 @@ import (
 
 const testTemplate = "test {{.test1}} for unit test {{.test2}}"
 
+func TestPayloadGeneratorConstructor(t *testing.T) {
+
+	tmpl := template.Must(template.New("test.gotpl").Parse(testTemplate))
+	getType := func(map[string]interface{}) ([]string, error) {
+		return []string{"test"}, nil
+	}
+
+	t.Run("Ok - full extension", func(t *testing.T) {
+		pg := NewPayloadGenerator(tmpl, getType, ".gotpl")
+		assert.Equal(t, tmpl, pg.templates)
+		assert.Equal(t, ".gotpl", pg.tplExt)
+	})
+
+	t.Run("Ok - extension with implicit separator", func(t *testing.T) {
+		pg := NewPayloadGenerator(tmpl, getType, "gotpl")
+		assert.Equal(t, tmpl, pg.templates)
+		assert.Equal(t, ".gotpl", pg.tplExt)
+	})
+}
+
 func TestEventTemplate(t *testing.T) {
 	data := map[string]interface{}{
 		"test1": "val1",
 		"test2": "val2",
 	}
 
-	tmpl := template.Must(template.New("test.tmpl").Parse(testTemplate))
+	tmpl := template.Must(template.New("test.gotpl").Parse(testTemplate))
 
 	t.Run("Ok", func(t *testing.T) {
-		res, err := executeEventTemplate(tmpl, []string{"test"}, data)
+		res, err := executeEventTemplate(tmpl, []string{"test"}, data, ".gotpl")
 		if err != nil {
 			t.Errorf("Error in event execution not expected: %v", err)
 		}
@@ -31,17 +51,17 @@ func TestEventTemplate(t *testing.T) {
 		data := map[string]interface{}{
 			"test1": "val1",
 		}
-		_, err := executeEventTemplate(tmpl, []string{"test"}, data)
+		_, err := executeEventTemplate(tmpl, []string{"test"}, data, ".gotpl")
 		assert.Errorf(t, err, "expected error for missing value")
 	})
 
 	t.Run("MissingAllTemplate", func(t *testing.T) {
-		_, err := executeEventTemplate(tmpl, []string{"error"}, data)
+		_, err := executeEventTemplate(tmpl, []string{"error"}, data, ".gotpl")
 		assert.Errorf(t, err, "expected error for missing template")
 	})
 
 	t.Run("MissingOneTemplate(and success)", func(t *testing.T) {
-		res, err := executeEventTemplate(tmpl, []string{"error", "test"}, data)
+		res, err := executeEventTemplate(tmpl, []string{"error", "test"}, data, ".gotpl")
 		if err != nil {
 			t.Errorf("Error in event execution not expected: %v", err)
 		}
@@ -54,7 +74,7 @@ func TestEventTemplate(t *testing.T) {
 
 func TestGenEventPayload(t *testing.T) {
 
-	tmpl := template.Must(template.New("test.tmpl").Parse(testTemplate))
+	tmpl := template.Must(template.New("test.gotpl").Parse(testTemplate))
 	jsonTX := []byte(`{ "test2": "val2" }`)
 	config := map[string]interface{}{
 		"test1": "val1",
@@ -64,10 +84,7 @@ func TestGenEventPayload(t *testing.T) {
 		return []string{"test"}, nil
 	}
 
-	pg := PayloadGenerator{
-		Templates: tmpl,
-		GetType:   getType,
-	}
+	pg := NewPayloadGenerator(tmpl, getType, ".gotpl")
 
 	t.Run("Ok", func(t *testing.T) {
 		res, err := pg.GenEventPayload(jsonTX, config)
@@ -92,10 +109,7 @@ func TestGenEventPayload(t *testing.T) {
 			return nil, fmt.Errorf("Test error")
 		}
 
-		pg := PayloadGenerator{
-			Templates: tmpl,
-			GetType:   getType,
-		}
+		pg := NewPayloadGenerator(tmpl, getType, ".gotpl")
 
 		_, err := pg.GenEventPayload(jsonTX, config)
 		assert.Errorf(t, err, "expected error for wrong transaction type")

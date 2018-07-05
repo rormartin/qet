@@ -1,0 +1,13 @@
+{
+    "appId": "{{ .appID }}",
+    "key": "{{ .key }}",
+    {{ if .apiVersion }}
+        "apiVersion": "{{ .apiVersion }}",
+    {{end }}
+    "params": {
+        "mutation": {{ .tx.mutation }}
+        {{ if .tx.balance }}
+            "balance": {{ .tx.balance }}
+        {{end}}
+    }
+}

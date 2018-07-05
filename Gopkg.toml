@@ -16,6 +16,10 @@
   revision = "8e4aba63da9fc5571e01c6a45dc809a58cbc5a68"
 
 [[constraint]]
+    name = "github.com/lovoo/goka"
+    revision = "72893dfb76caa3a85dc1b4104998d1bf5026e101"
+
+[[constraint]]
   name = "github.com/stretchr/testify"
   version = "1.2.1"
 

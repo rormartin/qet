@@ -10,8 +10,26 @@ import (
 )
 
 type PayloadGenerator struct {
-	Templates *template.Template
-	GetType   func(map[string]interface{}) ([]string, error)
+	templates *template.Template
+	tplExt    string
+	getType   func(map[string]interface{}) ([]string, error)
+}
+
+func NewPayloadGenerator(
+	templates *template.Template,
+	getType func(map[string]interface{}) ([]string, error),
+	templateExtension string) PayloadGenerator {
+
+	tplExt := templateExtension
+	if !strings.HasPrefix(templateExtension, ".") {
+		tplExt = "." + tplExt
+	}
+
+	return PayloadGenerator{
+		templates: templates,
+		tplExt:    tplExt,
+		getType:   getType,
+	}
 }
 
 func (p PayloadGenerator) GenEventPayload(
@@ -24,7 +42,7 @@ func (p PayloadGenerator) GenEventPayload(
 func (p PayloadGenerator) genEventPayload(
 	raw []byte,
 	configuration map[string]interface{},
-	templateExecutor func(*template.Template, []string, map[string]interface{}) ([]byte, error)) ([]byte, error) {
+	templateExecutor func(*template.Template, []string, map[string]interface{}, string) ([]byte, error)) ([]byte, error) {
 
 	var content interface{}
 	if err := json.Unmarshal(raw, &content); err != nil {
@@ -32,7 +50,7 @@ func (p PayloadGenerator) genEventPayload(
 	}
 
 	data := content.(map[string]interface{})
-	rawType, err := p.GetType(data)
+	rawType, err := p.getType(data)
 	if err != nil {
 		return nil, fmt.Errorf("Error to identify the transaction type: %v", err)
 	}
@@ -40,19 +58,21 @@ func (p PayloadGenerator) genEventPayload(
 	// always compatible types per definition, not possible error
 	mergo.Merge(&data, configuration)
 
-	return templateExecutor(p.Templates, rawType, data)
+	return templateExecutor(p.templates, rawType, data, p.tplExt)
 }
 
-func executeEventTemplate(template *template.Template, eventNames []string, data map[string]interface{}) ([]byte, error) {
-
-	const tplExtension = ".tmpl"
+func executeEventTemplate(
+	template *template.Template,
+	eventNames []string,
+	data map[string]interface{},
+	templateExtension string) ([]byte, error) {
 
 	var result bytes.Buffer
 
 	for index, eventName := range eventNames {
 		en := strings.ToLower(eventName)
 
-		err := template.ExecuteTemplate(&result, en+tplExtension, data)
+		err := template.ExecuteTemplate(&result, en+templateExtension, data)
 		if err == nil {
 			break // keep the first one that is working
 		}

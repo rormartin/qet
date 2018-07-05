@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/icemobilelab/qet/pkg/rabbitmq"
+	"github.com/icemobilelab/qet/pkg/kafka"
 	"github.com/icemobilelab/qet/pkg/transform"
 	log "github.com/sirupsen/logrus"
 	"os"
@@ -15,15 +15,13 @@ import (
 )
 
 var (
-	eventsTPL            *template.Template
-	logger               *log.Entry
-	envServiceName       = os.Getenv("SERVICE_NAME")
-	envLogLevelEnv       = os.Getenv("LOG_LEVEL")
-	envQueueUri          = os.Getenv("QUEUE_URI")
-	envQueueQueue        = os.Getenv("QUEUE_QUEUE")
-	envQueueExchange     = os.Getenv("QUEUE_EXCHANGE")
-	envQueueExchangeType = os.Getenv("QUEUE_EXCHANGE_TYPE")
-	envQueueConsumerTag  = os.Getenv("QUEUE_CONSUMER_TAG")
+	eventsTPL           *template.Template
+	logger              *log.Entry
+	envServiceName      = os.Getenv("SERVICE_NAME")
+	envLogLevelEnv      = os.Getenv("LOG_LEVEL")
+	envBrokers          = strings.Split(os.Getenv("QUEUE_BROKERS"), ",")
+	envQueueQueue       = os.Getenv("QUEUE_QUEUE")
+	envQueueConsumerTag = os.Getenv("QUEUE_CONSUMER_TAG")
 )
 
 func init() {
@@ -64,26 +62,7 @@ func main() {
 	signal.Notify(signals, os.Interrupt)
 
 	// queue data injector
-	queue := rabbitmq.NewRabbitMQReceiver(
-		envQueueUri,
-		rabbitmq.RabbitMQExchange{
-			Name:        envQueueExchange,
-			Type:        envQueueExchangeType,
-			Durable:     true,
-			AutoDeleted: false,
-			Internal:    false,
-			NoWait:      false,
-			Arguments:   nil,
-		},
-		rabbitmq.RabbitMQQueueDeclare{
-			Name:        envQueueQueue,
-			Durable:     true,
-			AutoDeleted: false,
-			Exclusive:   false,
-			NoWait:      false,
-			Arguments:   nil,
-		},
-		envQueueConsumerTag)
+	queue := kafka.NewKafkaReceiver(envBrokers, envQueueConsumerTag, envQueueQueue)
 
 	cpus := runtime.NumCPU()
 	logger.Printf("Running using %d parallel process", cpus)
