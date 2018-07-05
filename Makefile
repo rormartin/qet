@@ -4,7 +4,7 @@ default: dep test
 
 
 # Dependencies
-dep: vendor/*
+dep: 
 	dep ensure
 
 test: dep test_transform test_rabbitmq test_kafka
