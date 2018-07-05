@@ -11,7 +11,7 @@ import (
 
 func TestProcessX(t *testing.T) {
 
-	tmpl := template.Must(template.New("test.tmpl").Parse(testTemplate))
+	tmpl := template.Must(template.New("test.gotpl").Parse(testTemplate))
 
 	json := []byte(`{ "test2": "val2" }`)
 	config := map[string]interface{}{
@@ -22,10 +22,7 @@ func TestProcessX(t *testing.T) {
 		return []string{"test"}, nil
 	}
 
-	pg := PayloadGenerator{
-		Templates: tmpl,
-		GetType:   getType,
-	}
+	pg := NewPayloadGenerator(tmpl, getType, ".gotpl")
 
 	t.Run("OK", func(t *testing.T) {
 		executed := false
@@ -68,7 +65,7 @@ func TestProcessX(t *testing.T) {
 
 func TestProcessor(t *testing.T) {
 
-	tmpl := template.Must(template.New("test.tmpl").Parse(testTemplate))
+	tmpl := template.Must(template.New("test.gotpl").Parse(testTemplate))
 
 	config := map[string]interface{}{
 		"test1": "val1",
@@ -78,10 +75,7 @@ func TestProcessor(t *testing.T) {
 		return []string{"test"}, nil
 	}
 
-	pg := PayloadGenerator{
-		Templates: tmpl,
-		GetType:   getType,
-	}
+	pg := NewPayloadGenerator(tmpl, getType, ".gotpl")
 
 	executed := false
 	executor := func([]byte) error {

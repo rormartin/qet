@@ -29,7 +29,7 @@ var (
 func init() {
 
 	// init templates folder
-	eventsTPL = template.Must(template.ParseGlob("tmpls/*.tmpl"))
+	eventsTPL = template.Must(template.ParseGlob("../gotpls/*.gotpl"))
 
 	// init logger
 	loglevel, err := log.ParseLevel(strings.ToLower(envLogLevelEnv))
@@ -55,10 +55,7 @@ func main() {
 		"apiVersion": "apiVersionContent",
 	}
 
-	pg := transform.PayloadGenerator{
-		Templates: eventsTPL,
-		GetType:   getTXType,
-	}
+	pg := transform.NewPayloadGenerator(eventsTPL, getTXType, ".gotpl")
 
 	inputStream := make(chan transform.DataBlock)
 
