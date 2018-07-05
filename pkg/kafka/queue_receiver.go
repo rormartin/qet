@@ -88,7 +88,8 @@ func (q *KafkaReceiver) startConsumer(
 
 	ctx, cancel := context.WithCancel(context.Background())
 	q.shutdown = cancel
-	return processor.Run(ctx)
+	go processor.Run(ctx) // cancel context will stop the process
+	return nil
 }
 
 func (q *KafkaReceiver) Shutdown(loggerInput *log.Entry) error {
