@@ -11,17 +11,19 @@ import (
 )
 
 type KafkaReceiver struct {
-	brokers  []string
-	group    string
-	topic    string
-	shutdown func()
+	brokers    []string
+	group      string
+	topic      string
+	errorTopic string
+	shutdown   func()
 }
 
 func NewKafkaReceiver(brokers []string, group, topic string) *KafkaReceiver {
 	q := KafkaReceiver{
-		brokers: brokers,
-		group:   group,
-		topic:   topic,
+		brokers:    brokers,
+		group:      group,
+		topic:      topic,
+		errorTopic: topic + ".errors",
 	}
 	return &q
 }
@@ -76,9 +78,10 @@ func (q *KafkaReceiver) startConsumer(
 	graph := goka.DefineGroup(
 		goka.Group(q.group),
 		goka.Input(goka.Stream(q.topic), new(codec.Bytes),
-			kafkaMsgProcessor(msgs, maxRetries, retryExpirationCalc, logger)),
+			kafkaMsgProcessor(msgs, q.brokers, q.errorTopic, maxRetries, retryExpirationCalc, logger)),
 		goka.Persist(new(codec.Bytes)))
 	opts := []goka.ProcessorOption{}
+	opts = append(opts, goka.WithLogger(logger))
 
 	logger.Println("Starting goka processor")
 	processor, err := goka.NewProcessor(q.brokers, graph, opts...)
@@ -103,6 +106,8 @@ func (q *KafkaReceiver) Shutdown(loggerInput *log.Entry) error {
 // Message processor: encapsulate the goka processor with domain injections
 func kafkaMsgProcessor(
 	output chan transform.DataBlock,
+	brokers []string,
+	errorTopic string,
 	maxRetries int,
 	retryExpirationCalc func(int) int,
 	loggerInput *log.Entry) func(ctx goka.Context, msg interface{}) {
@@ -137,9 +142,22 @@ func kafkaMsgProcessor(
 				// !res
 				// error, retry mechanism
 				if retries >= maxRetries {
-					// TODO: review what to do, error topic?
-					// not possible to recover from error
-					logger.Warnf("Too much retries, not possible to process the message")
+
+					// not possible to recover from error: move message to dead-letter and log it
+					logger.Warnf("Too much retries, not possible to process the message (copy at %v)", errorTopic)
+
+					pub, err := goka.NewEmitter(brokers, goka.Stream(errorTopic), new(codec.Bytes))
+					if err != nil {
+						logger.Errorf("Error creating publisher to track error message: %v", err)
+						return
+					}
+					defer pub.Finish()
+					err = pub.EmitSync("", data)
+					if err != nil {
+						logger.Errorf("Error publishing error message (potentially lost): %v", err)
+						return
+					}
+					logger.Infof("Error message reported correctly to %v", errorTopic)
 					return
 				}
 				// timeout define by the function
