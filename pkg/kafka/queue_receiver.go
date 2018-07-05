@@ -152,7 +152,7 @@ func kafkaMsgProcessor(
 						return
 					}
 					defer pub.Finish()
-					err = pub.EmitSync("", data)
+					err = pub.EmitSync(ctx.Key(), data)
 					if err != nil {
 						logger.Errorf("Error publishing error message (potentially lost): %v", err)
 						return
