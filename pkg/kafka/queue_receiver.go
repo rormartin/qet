@@ -51,7 +51,7 @@ func (q *KafkaReceiver) Connect(
 		done,
 		3,
 		func(retry int) int {
-			return 1000 * int(math.Pow(2.0, float64(retry)))
+			return 1000 * int(math.Pow(3.0, float64(retry)))
 		},
 		logger)
 }
@@ -67,8 +67,10 @@ func (q *KafkaReceiver) ConnectCustomRetry(
 
 	err := q.startConsumer(msgs, maxRetries, retryFuncTime, logger)
 	if err != nil {
-		logger.Error("error and shutting down: %v", err)
-		defer q.Shutdown(logger)
+		logger.Errorf("Error and shutting down: %v", err)
+		if q.shutdown != nil {
+			defer q.Shutdown(logger)
+		}
 		return err
 	}
 
@@ -96,7 +98,6 @@ func (q *KafkaReceiver) startConsumer(
 	opts := []goka.ProcessorOption{}
 	opts = append(opts, goka.WithLogger(logger))
 
-	logger.Println("Starting goka processor")
 	processor, err := goka.NewProcessor(q.brokers, graph, opts...)
 	if err != nil {
 		return err
@@ -104,8 +105,32 @@ func (q *KafkaReceiver) startConsumer(
 
 	ctx, cancel := context.WithCancel(context.Background())
 	q.shutdown = cancel
-	go processor.Run(ctx) // cancel context will stop the process
+	go runAutoReconnect(ctx, processor, logger) // cancel context will stop the process
 	return nil
+}
+
+// Manage automatic reconnected mechanism (for ever)
+func runAutoReconnect(context context.Context, processor *goka.Processor, loggerInput *log.Entry) {
+
+	logger := loggerInput.WithFields(log.Fields{
+		"context": "runAutoReconnect"})
+
+	for {
+		// verify valid context
+		if context.Err() == nil {
+			logger.Println("Starting goka processor")
+			err := processor.Run(context)
+
+			if err != nil {
+				logger.Errorf("Error in processor start: %v", err)
+			}
+
+			logger.Printf("Unexpected ending for processor, trying to run again")
+
+			time.Sleep(5 * time.Second) // arbitrary time to reconnect
+		}
+	}
+
 }
 
 func (q *KafkaReceiver) Shutdown(loggerInput *log.Entry) error {
