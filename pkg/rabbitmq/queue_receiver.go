@@ -173,7 +173,6 @@ func (q *Receiver) runAutoReconnect(
 			time.Sleep(5 * time.Second) // arbitrary time to reconnect
 		}
 	}
-	return nil
 }
 
 func (q *Receiver) startConsumer(
@@ -309,9 +308,6 @@ func (q *Receiver) startConsumer(
 			msgs <- dataBlock
 		}
 	}
-
-	return nil
-
 }
 
 func createExchangeQueueBind(channel *amqp.Channel, specs exchangeQueueBind) error {
