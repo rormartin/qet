@@ -77,9 +77,9 @@ func main() {
 	signal.Notify(signals, os.Interrupt)
 
 	// queue data injector
-	queue := rabbitmq.NewRabbitMQReceiver(
+	queue := rabbitmq.NewReceiver(
 		envQueueUri,
-		rabbitmq.RabbitMQExchange{
+		rabbitmq.Exchange{
 			Name:        envQueueExchange,
 			Type:        envQueueExchangeType,
 			Durable:     true,
@@ -88,7 +88,7 @@ func main() {
 			NoWait:      false,
 			Arguments:   nil,
 		},
-		rabbitmq.RabbitMQQueueDeclare{
+		rabbitmq.QueueDeclare{
 			Name:        envQueueQueue,
 			Durable:     true,
 			AutoDeleted: false,

@@ -22,12 +22,30 @@ import (
 	"text/template"
 )
 
+// PayloadGenerator hold the templates and the mapping function
+// between data and templates names
 type PayloadGenerator struct {
 	templates *template.Template
 	tplExt    string
 	getType   func(map[string]interface{}) ([]string, error)
 }
 
+// NewPayloadGenerator creates an instance of a PayloadGenerator with
+// the available templates, a function that maps a input Json to a
+// template name and the file extension used for the template files.
+//
+// The getType is a function that maps a input data object (Json
+// structure transformed into a map) to a template name (extension not
+// included). The output map is a list of names that the payload
+// generator will try to map, in the provided order, to the available
+// templates. For example, a JSON:
+//   {"operation": {"sum": [1,2]} }
+// can be mapped to ["sum", "operation"].
+//
+// The payload generator will look for the "sum" template, and if that
+// one no exist in the "templates" parameter, it will try the
+// "operation" template. If also the "operation" template is not
+// available, a error will be raise
 func NewPayloadGenerator(
 	templates *template.Template,
 	getType func(map[string]interface{}) ([]string, error),
@@ -45,6 +63,19 @@ func NewPayloadGenerator(
 	}
 }
 
+// GenEventPayload generates a payload using the predefined templates
+// and mapping functions for the input raw data. With the input data,
+// a configuration map can be defined to fill values for the
+// transformation not available in the raw data (application
+// configuration like API keys, host information, versions ...) The
+// method returns the result of the transformation.
+//
+// If the template is not found for the input raw data a error will be
+// raise. If one the parameters of the template is not possible to be
+// filled using the input data (raw data and configuration map), an
+// error will be raise. Conditional flows can be used for a
+// non-mandatory data: https://golang.org/pkg/text/template/
+//
 func (p PayloadGenerator) GenEventPayload(
 	raw []byte,
 	configuration map[string]interface{}) ([]byte, error) {

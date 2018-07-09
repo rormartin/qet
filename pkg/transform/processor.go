@@ -20,14 +20,43 @@ import (
 	"time"
 )
 
+// DataBlock is a generic structure used as an input for the
+// user-defined executor.
+//
+// The raw data is provided and two methods to acknowledge (Ack) that
+// the data was correctly processed or to indicate that the data was
+// not processed correctly and allows the library to execute the retry
+// mechanism on that date to try to process it later.
 type DataBlock struct {
 	Data []byte
 	Ack  func() error
 	Nack func() error
 }
 
+// Queue is a general interface to connect with a library specified
+// queue implementation
 type Queue interface {
+	// Connect start a connection with a queue, using the provided
+	// context, storing the data from the queue in the stream chan
+	// DataBlock, returning errors via the error chan and log the
+	// process in the provided logger.
+	//
+	// The connection uses a default retry mechanism implemented,
+	// that can depends on the library implementation. For a
+	// custom retry parameters, the "ConnectCustomRetry" can be
+	// used.
 	Connect(context context.Context, stream chan DataBlock, done chan error, logger *log.Entry) error
+
+	// ConnectCustomRetry start a connection with a queue, using
+	// the provided context, storing the data from the queue in
+	// the stream chan DataBlock, returning errors via the error
+	// chan and log the process in the provided logger.
+	//
+	// The retry mechanism can be tuned via the specification the
+	// maximum amount of retries and a function that define the
+	// time (in milliseconds) between the retries, with the retry
+	// counter as a parameter (starts on 0 -
+	// https://www.cs.utexas.edu/users/EWD/ewd08xx/EWD831.html )
 	ConnectCustomRetry(
 		context context.Context,
 		msgs chan DataBlock,
@@ -51,8 +80,21 @@ func processX(
 	return executor(payload)
 }
 
-// Stand alone processor consuming data from the input data chan
-// and executing the transformation
+// Processor defines an stand-alone processor that execute the
+// produced function "exec" with all the result of the transformed
+// data coming via the "input" channel. The payload generator and the
+// configuration will be used for the data transformation. The signals
+// provides a mechanism to stop the processor execution and the logger
+// trace the processor activity.
+//
+// For every data received in the "input" chan, a transformation is
+// made and the result of the transformation is provided as a
+// parameter for the "exec" function.
+//
+// If the transformation fails, the retry mechanism will be used
+//
+// If the execution of the "exec" function returns an error, the retry
+// mechanism will be used.
 func Processor(
 	pg PayloadGenerator,
 	configuration map[string]interface{},
@@ -80,8 +122,13 @@ func Processor(
 	}
 }
 
-// Full processor orchestration, to start the go routines with the
-// amount of parallel processors defined
+// ProcessorOrch execute the "Processor" function with an extra level
+// of orchestration to start more than one transformation and executor
+// process in parallel (specified by the "concurrents"
+// parameters). The stop mechanism also handle the stop of all the
+// individual workers.
+//
+// See "Processor" for more information.
 func ProcessorOrch(
 	queue Queue,
 	pg PayloadGenerator,

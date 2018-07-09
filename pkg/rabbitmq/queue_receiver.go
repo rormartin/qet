@@ -24,7 +24,9 @@ import (
 	"time"
 )
 
-type RabbitMQExchange struct {
+// Exchange defines a wrapper for a RabbitMQ exchange
+// specification.
+type Exchange struct {
 	Name        string
 	Type        string
 	Durable     bool
@@ -34,7 +36,9 @@ type RabbitMQExchange struct {
 	Arguments   amqp.Table
 }
 
-type RabbitMQQueueDeclare struct {
+// QueueDeclare defines a wrapper for a RabbitMQ queue
+// specification.
+type QueueDeclare struct {
 	Name        string
 	Durable     bool
 	AutoDeleted bool
@@ -43,10 +47,12 @@ type RabbitMQQueueDeclare struct {
 	Arguments   amqp.Table
 }
 
-type RabbitMQReceiver struct {
+// Receiver defines the information required to connect to the
+// RabbitMQ instance.
+type Receiver struct {
 	uri         string
-	exchange    RabbitMQExchange
-	queue       RabbitMQQueueDeclare
+	exchange    Exchange
+	queue       QueueDeclare
 	routingKey  string
 	consumerTag string
 	*consumer
@@ -79,13 +85,16 @@ const (
 	deathSuffix = ".death"
 )
 
-func NewRabbitMQReceiver(
+// NewReceiver creates a new instance of a Receiver
+// with the RabbitMQ connection uri, the general exchange and queue
+// specification that contains the data to consume.
+func NewReceiver(
 	uri string,
-	exchange RabbitMQExchange,
-	queue RabbitMQQueueDeclare,
-	consumerTag string) *RabbitMQReceiver {
+	exchange Exchange,
+	queue QueueDeclare,
+	consumerTag string) *Receiver {
 
-	q := RabbitMQReceiver{
+	q := Receiver{
 		uri:         uri,
 		exchange:    exchange,
 		queue:       queue,
@@ -97,7 +106,8 @@ func NewRabbitMQReceiver(
 	return &q
 }
 
-func (q *RabbitMQReceiver) Connect(
+// Connect implements the Queue interface
+func (q *Receiver) Connect(
 	ctx context.Context,
 	msgs chan transform.DataBlock,
 	errorChan chan error,
@@ -114,7 +124,8 @@ func (q *RabbitMQReceiver) Connect(
 		logger)
 }
 
-func (q *RabbitMQReceiver) ConnectCustomRetry(
+// ConnectCustomRetry implements the Queue interface
+func (q *Receiver) ConnectCustomRetry(
 	ctx context.Context,
 	msgs chan transform.DataBlock,
 	errorChan chan error,
@@ -136,7 +147,7 @@ func (q *RabbitMQReceiver) ConnectCustomRetry(
 }
 
 // Manage automatic reconnected mechanism (for ever)
-func (q *RabbitMQReceiver) runAutoReconnect(
+func (q *Receiver) runAutoReconnect(
 	ctx context.Context,
 	msgs chan transform.DataBlock,
 	maxRetries int,
@@ -165,7 +176,7 @@ func (q *RabbitMQReceiver) runAutoReconnect(
 	return nil
 }
 
-func (q *RabbitMQReceiver) startConsumer(
+func (q *Receiver) startConsumer(
 	ctx context.Context,
 	msgs chan transform.DataBlock,
 	maxRetries int,
@@ -318,7 +329,7 @@ func createExchangeQueueBind(channel *amqp.Channel, specs exchangeQueueBind) err
 		return err
 	}
 
-	var args amqp.Table = nil
+	var args amqp.Table
 	// create the queue
 	if len(specs.deathLetterExchange) > 0 {
 		args = make(amqp.Table)
@@ -348,7 +359,7 @@ func createExchangeQueueBind(channel *amqp.Channel, specs exchangeQueueBind) err
 	return err
 }
 
-func (q *RabbitMQReceiver) shutdown(loggerInput *log.Entry) error {
+func (q *Receiver) shutdown(loggerInput *log.Entry) error {
 
 	logger := loggerInput.WithFields(log.Fields{"context": "Shutdown"})
 
@@ -384,7 +395,7 @@ func (q *RabbitMQReceiver) shutdown(loggerInput *log.Entry) error {
 func dataBlockGenerator(
 	msg amqp.Delivery,
 	maxRetries int,
-	queueUri string,
+	queueURI string,
 	retrySpecs exchangeQueueBind,
 	retryExpirationCalc func(int) int,
 	loggerInput *log.Entry) transform.DataBlock {
@@ -426,7 +437,7 @@ func dataBlockGenerator(
 			if err := rePublish(
 				&msg,
 				retries,
-				queueUri,
+				queueURI,
 				retrySpecs,
 				retryExpirationCalc,
 				log); err != nil {
@@ -447,15 +458,15 @@ func dataBlockGenerator(
 func rePublish(
 	msg *amqp.Delivery,
 	retries int,
-	queueUri string,
+	queueURI string,
 	retrySpecs exchangeQueueBind,
 	retryExpirationCalc func(int) int,
 	logger *log.Entry) error {
 
 	log := logger.WithFields(log.Fields{"context": "rePublish"})
 
-	log.Printf("dialing %q", queueUri)
-	conn, err := amqp.Dial(queueUri)
+	log.Printf("dialing %q", queueURI)
+	conn, err := amqp.Dial(queueURI)
 	if err != nil {
 		return fmt.Errorf("Dial: %s", err)
 	}

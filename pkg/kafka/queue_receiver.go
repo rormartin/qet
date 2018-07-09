@@ -23,15 +23,20 @@ import (
 	"time"
 )
 
-type KafkaReceiver struct {
+// Receiver store the basic Kafka structure to start a connection.
+type Receiver struct {
 	brokers    []string
 	group      string
 	topic      string
 	errorTopic string
 }
 
-func NewKafkaReceiver(brokers []string, group, topic string) *KafkaReceiver {
-	q := KafkaReceiver{
+// NewReceiver creates a Kafka receiver with the specified list
+// of brokers. The data is consumed from the specified topic and using
+// the provided group. Remember that the group information is used to
+// manage the reading Kafka offset.
+func NewReceiver(brokers []string, group, topic string) *Receiver {
+	q := Receiver{
 		brokers:    brokers,
 		group:      group,
 		topic:      topic,
@@ -40,7 +45,8 @@ func NewKafkaReceiver(brokers []string, group, topic string) *KafkaReceiver {
 	return &q
 }
 
-func (q *KafkaReceiver) Connect(
+// Connect implements the Queue interface
+func (q *Receiver) Connect(
 	ctx context.Context,
 	msgs chan transform.DataBlock,
 	done chan error,
@@ -57,7 +63,8 @@ func (q *KafkaReceiver) Connect(
 		logger)
 }
 
-func (q *KafkaReceiver) ConnectCustomRetry(
+// ConnectCustomRetry implements the Queue interface
+func (q *Receiver) ConnectCustomRetry(
 	ctx context.Context,
 	msgs chan transform.DataBlock,
 	done chan error,
@@ -77,7 +84,7 @@ func (q *KafkaReceiver) ConnectCustomRetry(
 
 }
 
-func (q *KafkaReceiver) startConsumer(
+func (q *Receiver) startConsumer(
 	ctx context.Context,
 	msgs chan transform.DataBlock,
 	maxRetries int,

@@ -75,7 +75,7 @@ func main() {
 	signal.Notify(signals, os.Interrupt)
 
 	// queue data injector
-	queue := kafka.NewKafkaReceiver(envBrokers, envQueueConsumerTag, envQueueQueue)
+	queue := kafka.NewReceiver(envBrokers, envQueueConsumerTag, envQueueQueue)
 
 	cpus := runtime.NumCPU()
 	logger.Printf("Running using %d parallel process", cpus)
