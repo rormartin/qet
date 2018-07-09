@@ -109,7 +109,7 @@ func (q *RabbitMQReceiver) Connect(
 		errorChan,
 		3,
 		func(retry int) int {
-			return 10000 * int(math.Pow(2.0, float64(retry)))
+			return 1000 * int(math.Pow(3.0, float64(retry)))
 		},
 		logger)
 }
@@ -172,7 +172,7 @@ func (q *RabbitMQReceiver) startConsumer(
 	retryExpirationCalc func(int) int,
 	logger *log.Entry) error {
 
-	log := logger.WithFields(log.Fields{"context": "Consumer"})
+	log := logger.WithFields(log.Fields{"context": "startConsumer"})
 
 	q.consumer = &consumer{
 		conn:      nil,
