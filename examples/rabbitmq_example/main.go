@@ -111,8 +111,10 @@ func main() {
 		cpus)
 
 	if err != nil {
+		logger.Errorf("Error in processor execution: %v", err)
 		os.Exit(1)
 	}
+	logger.Printf("Ends")
 	os.Exit(0)
 
 }

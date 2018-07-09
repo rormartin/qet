@@ -14,6 +14,7 @@
 package transform // import "github.com/icemobilelab/qet/pkg/transform"
 
 import (
+	"context"
 	log "github.com/sirupsen/logrus"
 	"os"
 	"time"
@@ -26,14 +27,14 @@ type DataBlock struct {
 }
 
 type Queue interface {
-	Connect(stream chan DataBlock, done chan error, logger *log.Entry) error
+	Connect(context context.Context, stream chan DataBlock, done chan error, logger *log.Entry) error
 	ConnectCustomRetry(
+		context context.Context,
 		msgs chan DataBlock,
 		done chan error,
 		maxRetries int,
 		retryFuncTime func(int) int,
 		loggerInput *log.Entry) error
-	Shutdown(logger *log.Entry) error
 }
 
 func processX(
@@ -97,28 +98,31 @@ func ProcessorOrch(
 		go Processor(pg, configuration, exec, input, signalsInternal, loggerPro)
 	}
 
-	done := make(chan error)
-	err := queue.Connect(input, done, logger)
-	if err != nil {
-		logger.Errorf("Queue connection error, stop processor: %v", err)
-		return err
-	}
+	errorChan := make(chan error)
+
+	ctx, ctxCancel := context.WithCancel(context.Background())
+	defer ctxCancel()
+
+	// start queue
+	go func() {
+		err := queue.Connect(ctx, input, errorChan, logger)
+		if err != nil {
+			logger.Errorf("Queue connection error, stop processor: %v", err)
+			errorChan <- err
+			return
+		}
+	}()
 
 	select {
-	case err := <-done:
-		logger.Error("Error in queue: %v", err)
+	case err := <-errorChan:
+		logger.Errorf("Error in queue: %v", err)
+		return err
 	case s := <-signals:
 		logger.Printf("Gentle close")
 		// forward the signal to all the processors
 		for i := 0; i < concurrents; i++ {
 			signalsInternal <- s
 		}
-		err = queue.Shutdown(logger)
-		if err != nil {
-			logger.Errorf("Error in queue shutdown: %v", err)
-			return err
-		}
-		return nil
 	}
 	return nil
 }

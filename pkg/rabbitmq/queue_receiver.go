@@ -14,6 +14,7 @@
 package rabbitmq // import "github.com/icemobilelab/qet/pkg/rabbitmq"
 
 import (
+	"context"
 	"fmt"
 	"github.com/icemobilelab/qet/pkg/transform"
 	log "github.com/sirupsen/logrus"
@@ -51,10 +52,10 @@ type RabbitMQReceiver struct {
 }
 
 type consumer struct {
-	conn    *amqp.Connection
-	channel *amqp.Channel
-	tag     string
-	done    chan error
+	conn      *amqp.Connection
+	channel   *amqp.Channel
+	tag       string
+	errorChan chan error
 }
 
 // structure used to create an exchange, a queue and the binding
@@ -77,7 +78,11 @@ const (
 	deathSuffix = ".death"
 )
 
-func NewRabbitMQReceiver(uri string, exchange RabbitMQExchange, queue RabbitMQQueueDeclare, consumerTag string) *RabbitMQReceiver {
+func NewRabbitMQReceiver(
+	uri string,
+	exchange RabbitMQExchange,
+	queue RabbitMQQueueDeclare,
+	consumerTag string) *RabbitMQReceiver {
 
 	q := RabbitMQReceiver{
 		uri:         uri,
@@ -92,13 +97,15 @@ func NewRabbitMQReceiver(uri string, exchange RabbitMQExchange, queue RabbitMQQu
 }
 
 func (q *RabbitMQReceiver) Connect(
+	ctx context.Context,
 	msgs chan transform.DataBlock,
-	done chan error,
+	errorChan chan error,
 	logger *log.Entry) error {
 
 	return q.ConnectCustomRetry(
+		ctx,
 		msgs,
-		done,
+		errorChan,
 		3,
 		func(retry int) int {
 			return 10000 * int(math.Pow(2.0, float64(retry)))
@@ -107,18 +114,19 @@ func (q *RabbitMQReceiver) Connect(
 }
 
 func (q *RabbitMQReceiver) ConnectCustomRetry(
+	ctx context.Context,
 	msgs chan transform.DataBlock,
-	done chan error,
+	errorChan chan error,
 	maxRetries int,
 	retryFuncTime func(int) int,
 	loggerInput *log.Entry) error {
 
 	logger := loggerInput.WithFields(log.Fields{"context": "Connect"})
 
-	err := q.startConsumer(msgs, maxRetries, retryFuncTime, logger)
+	err := q.startConsumer(ctx, msgs, maxRetries, retryFuncTime, logger)
 	if err != nil {
-		logger.Error("error and shutting down: %v", err)
-		defer q.Shutdown(logger)
+		logger.Errorf("Error and shutting down: %v", err)
+		defer q.shutdown(logger)
 		return err
 	}
 
@@ -126,15 +134,20 @@ func (q *RabbitMQReceiver) ConnectCustomRetry(
 
 }
 
-func (q *RabbitMQReceiver) startConsumer(msgs chan transform.DataBlock, maxRetries int, retryExpirationCalc func(int) int, logger *log.Entry) error {
+func (q *RabbitMQReceiver) startConsumer(
+	ctx context.Context,
+	msgs chan transform.DataBlock,
+	maxRetries int,
+	retryExpirationCalc func(int) int,
+	logger *log.Entry) error {
 
 	log := logger.WithFields(log.Fields{"context": "Consumer"})
 
 	q.consumer = &consumer{
-		conn:    nil,
-		channel: nil,
-		tag:     q.consumerTag,
-		done:    make(chan error),
+		conn:      nil,
+		channel:   nil,
+		tag:       q.consumerTag,
+		errorChan: make(chan error),
 	}
 
 	var err error
@@ -225,14 +238,29 @@ func (q *RabbitMQReceiver) startConsumer(msgs chan transform.DataBlock, maxRetri
 		return fmt.Errorf("Queue Consume: %s", err)
 	}
 
-	go handle(deliveries,
-		q.consumer.done,
-		msgs,
-		maxRetries,
-		q.uri,
-		retryExchangeQueueBind,
-		retryExpirationCalc,
-		log)
+	// block to process the messages and deal with the infinity
+	// server block
+	defer logger.Printf("handle: deliveries channel closed")
+	for {
+		select {
+		case <-ctx.Done():
+			// start shutdown process and ends
+			logger.Printf("Context done")
+			q.shutdown(logger)
+			return ctx.Err()
+		case msg := <-deliveries:
+			logger.Debugf("got %dB delivery: %q", len(msg.Body), msg.Body)
+			dataBlock := dataBlockGenerator(
+				msg,
+				maxRetries,
+				q.uri,
+				retryExchangeQueueBind,
+				retryExpirationCalc,
+				logger)
+			// deliver processed message
+			msgs <- dataBlock
+		}
+	}
 
 	return nil
 
@@ -283,7 +311,7 @@ func createExchangeQueueBind(channel *amqp.Channel, specs exchangeQueueBind) err
 	return err
 }
 
-func (q *RabbitMQReceiver) Shutdown(loggerInput *log.Entry) error {
+func (q *RabbitMQReceiver) shutdown(loggerInput *log.Entry) error {
 
 	logger := loggerInput.WithFields(log.Fields{"context": "Shutdown"})
 
@@ -293,95 +321,90 @@ func (q *RabbitMQReceiver) Shutdown(loggerInput *log.Entry) error {
 	}
 
 	// will close() the deliveries channel
-	if err := q.consumer.channel.Cancel(q.consumer.tag, true); err != nil {
-		return fmt.Errorf("Consumer cancel failed: %s", err)
+	if q.consumer.channel != nil {
+		logger.Debugf("Shutdown channel")
+		if err := q.consumer.channel.Cancel(q.consumer.tag, true); err != nil {
+			return fmt.Errorf("Consumer cancel failed: %v", err)
+		}
+		if err := q.consumer.channel.Close(); err != nil {
+			return fmt.Errorf("Channel close failed: %v", err)
+		}
 	}
 
-	if err := q.consumer.conn.Close(); err != nil {
-		return fmt.Errorf("AMQP connection close error: %s", err)
+	if q.consumer.conn != nil {
+		logger.Debugf("Shutdown connection")
+		if err := q.consumer.conn.Close(); err != nil {
+			return fmt.Errorf("AMQP connection close error: %s", err)
+		}
 	}
 	defer logger.Printf("AMQP shutdown OK")
 
-	// wait for handle() to exit
-	return <-q.consumer.done
-
+	return nil
 }
 
-func handle(
-	deliveries <-chan amqp.Delivery,
-	done chan error,
-	output chan transform.DataBlock,
+// Custom data block generator. The retry mechanism is implement,
+// implicit, in the Nack function
+func dataBlockGenerator(
+	msg amqp.Delivery,
 	maxRetries int,
 	queueUri string,
 	retrySpecs exchangeQueueBind,
 	retryExpirationCalc func(int) int,
-	loggerInput *log.Entry) {
+	loggerInput *log.Entry) transform.DataBlock {
 
-	logger := loggerInput.WithFields(log.Fields{"context": "handle"})
+	logger := loggerInput.WithFields(log.Fields{"context": "dataBlockGenerator"})
 
-	for d := range deliveries {
-		logger.Debugf(
-			"got %dB delivery: %q",
-			len(d.Body),
-			d.Body,
-		)
-		db := transform.DataBlock{
-			Data: d.Body,
-			Ack:  func() error { return d.Ack(false) },
-			Nack: func() error {
-				log := logger.WithFields(log.Fields{"context": "Nack"})
+	return transform.DataBlock{
+		Data: msg.Body,
+		Ack:  func() error { return msg.Ack(false) },
+		Nack: func() error {
+			log := logger.WithFields(log.Fields{"context": "Nack"})
 
-				msg := d
+			// use the "free" requeue
+			if !msg.Redelivered {
+				log.Debugf("Re-queue with no re-delivery")
+				return msg.Nack(false, !msg.Redelivered)
+			}
 
-				// use the "free" requeue
-				if !msg.Redelivered {
-					log.Debugf("Re-queue with no re-delivery")
-					return d.Nack(false, !msg.Redelivered)
+			// evaluate if the message goes to the retry exchange
+			// (retry header present and with the right value)
+			headers := msg.Headers
+			retries := 0
+			var err error
+			if val, ok := headers["retries"]; ok {
+				retries, err = strconv.Atoi(val.(string))
+				if err != nil {
+					retries = 0
 				}
+			}
+			log.Debugf("Retries for message: %d", retries)
+			if retries >= maxRetries {
+				// just Nack and no republish
+				// eventually will end into the dead-letter exchange
+				log.Printf("Too much retries, nack with no requeue (death letter)")
+				return msg.Nack(false, false)
+			}
 
-				// evaluate if the message goes to the retry exchange
-				// (retry header present and with the right value)
-				headers := msg.Headers
-				retries := 0
-				var err error
-				if val, ok := headers["retries"]; ok {
-					retries, err = strconv.Atoi(val.(string))
-					if err != nil {
-						retries = 0
-					}
-				}
-				log.Debugf("Retries for message: %d", retries)
-				if retries >= maxRetries {
-					// just Nack and no republish
-					// eventually will end into the dead-letter exchange
-					log.Printf("Too much retries, nack with no requeue (death letter)")
-					return d.Nack(false, false)
-				}
-
-				log.Debugf("Republishing in retry queue")
-				if err := rePublish(
-					&msg,
-					retries,
-					queueUri,
-					retrySpecs,
-					retryExpirationCalc,
-					log); err != nil {
-					log.Warnf("Error in republish: %v", err)
-					msg.Nack(false, false)
-					return nil
-				}
-
-				// everything it's Ok
-				// ACK to the original one
-				msg.Ack(false)
-				log.Debugf("Confirmed and ACK")
+			log.Debugf("Republishing in retry queue")
+			if err := rePublish(
+				&msg,
+				retries,
+				queueUri,
+				retrySpecs,
+				retryExpirationCalc,
+				log); err != nil {
+				log.Warnf("Error in republish: %v", err)
+				msg.Nack(false, false)
 				return nil
-			},
-		}
-		output <- db
+			}
+
+			// everything it's Ok
+			// ACK to the original one
+			msg.Ack(false)
+			log.Debugf("Confirmed and ACK")
+			return nil
+		},
 	}
-	logger.Printf("handle: deliveries channel closed")
-	done <- nil
 }
 
 func rePublish(

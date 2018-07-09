@@ -28,7 +28,6 @@ type KafkaReceiver struct {
 	group      string
 	topic      string
 	errorTopic string
-	shutdown   func()
 }
 
 func NewKafkaReceiver(brokers []string, group, topic string) *KafkaReceiver {
@@ -42,11 +41,13 @@ func NewKafkaReceiver(brokers []string, group, topic string) *KafkaReceiver {
 }
 
 func (q *KafkaReceiver) Connect(
+	ctx context.Context,
 	msgs chan transform.DataBlock,
 	done chan error,
 	logger *log.Entry) error {
 
 	return q.ConnectCustomRetry(
+		ctx,
 		msgs,
 		done,
 		3,
@@ -57,6 +58,7 @@ func (q *KafkaReceiver) Connect(
 }
 
 func (q *KafkaReceiver) ConnectCustomRetry(
+	ctx context.Context,
 	msgs chan transform.DataBlock,
 	done chan error,
 	maxRetries int,
@@ -65,12 +67,9 @@ func (q *KafkaReceiver) ConnectCustomRetry(
 
 	logger := loggerInput.WithFields(log.Fields{"context": "ConnectCustomRetry"})
 
-	err := q.startConsumer(msgs, maxRetries, retryFuncTime, logger)
+	err := q.startConsumer(ctx, msgs, maxRetries, retryFuncTime, logger)
 	if err != nil {
 		logger.Errorf("Error and shutting down: %v", err)
-		if q.shutdown != nil {
-			defer q.Shutdown(logger)
-		}
 		return err
 	}
 
@@ -79,6 +78,7 @@ func (q *KafkaReceiver) ConnectCustomRetry(
 }
 
 func (q *KafkaReceiver) startConsumer(
+	ctx context.Context,
 	msgs chan transform.DataBlock,
 	maxRetries int,
 	retryExpirationCalc func(int) int,
@@ -103,8 +103,6 @@ func (q *KafkaReceiver) startConsumer(
 		return err
 	}
 
-	ctx, cancel := context.WithCancel(context.Background())
-	q.shutdown = cancel
 	go runAutoReconnect(ctx, processor, logger) // cancel context will stop the process
 	return nil
 }
@@ -131,14 +129,6 @@ func runAutoReconnect(context context.Context, processor *goka.Processor, logger
 		}
 	}
 
-}
-
-func (q *KafkaReceiver) Shutdown(loggerInput *log.Entry) error {
-	logger := loggerInput.WithFields(log.Fields{"context": "Shutdown"})
-
-	logger.Println("Shutting down goka processors")
-	q.shutdown()
-	return nil
 }
 
 // Message processor: encapsulate the goka processor with domain injections
