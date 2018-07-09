@@ -21,6 +21,7 @@ import (
 	"github.com/streadway/amqp"
 	"math"
 	"strconv"
+	"time"
 )
 
 type RabbitMQExchange struct {
@@ -123,15 +124,45 @@ func (q *RabbitMQReceiver) ConnectCustomRetry(
 
 	logger := loggerInput.WithFields(log.Fields{"context": "Connect"})
 
-	err := q.startConsumer(ctx, msgs, maxRetries, retryFuncTime, logger)
+	// try first dial to stop on server down
+	_, err := amqp.Dial(q.uri)
 	if err != nil {
-		logger.Errorf("Error and shutting down: %v", err)
+		logger.Errorf("Error on dial: %s", err)
 		defer q.shutdown(logger)
 		return err
 	}
+	return q.runAutoReconnect(ctx, msgs, maxRetries, retryFuncTime, logger)
 
+}
+
+// Manage automatic reconnected mechanism (for ever)
+func (q *RabbitMQReceiver) runAutoReconnect(
+	ctx context.Context,
+	msgs chan transform.DataBlock,
+	maxRetries int,
+	retryFuncTime func(int) int,
+	loggerInput *log.Entry) error {
+
+	logger := loggerInput.WithFields(log.Fields{
+		"context": "runAutoReconnect"})
+
+	for {
+		// verify valid context
+		if ctx.Err() == nil {
+			logger.Println("Starting rabbitMQ consumer")
+
+			err := q.startConsumer(ctx, msgs, maxRetries, retryFuncTime, logger)
+			if err != nil {
+				logger.Errorf("Error consumer start: %v", err)
+				q.shutdown(logger)
+			}
+
+			logger.Printf("Unexpected ending for consumer, trying to run again")
+
+			time.Sleep(5 * time.Second) // arbitrary time to reconnect
+		}
+	}
 	return nil
-
 }
 
 func (q *RabbitMQReceiver) startConsumer(
@@ -162,6 +193,9 @@ func (q *RabbitMQReceiver) startConsumer(
 	if err != nil {
 		return fmt.Errorf("Channel: %s", err)
 	}
+	// listener to detect connection closes
+	chClose := make(chan *amqp.Error)
+	q.consumer.channel.NotifyClose(chClose)
 
 	// Main input queue
 	if err = createExchangeQueueBind(
@@ -248,6 +282,9 @@ func (q *RabbitMQReceiver) startConsumer(
 			logger.Printf("Context done")
 			q.shutdown(logger)
 			return ctx.Err()
+		case errch := <-chClose:
+			logger.Errorf("Error in channel: %v", errch)
+			return errch
 		case msg := <-deliveries:
 			logger.Debugf("got %dB delivery: %q", len(msg.Body), msg.Body)
 			dataBlock := dataBlockGenerator(
