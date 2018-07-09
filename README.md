@@ -1,4 +1,6 @@
 # Queue Extract and Transformation library
+[![Go Report Card](https://goreportcard.com/badge/github.com/icemobilelab/qet)](https://goreportcard.com/report/github.com/icemobilelab/qet)
+[![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 
 A helper library to help to implement ETL process or process that
 requires of consuming data from a queue and execute transformations.
