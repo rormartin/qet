@@ -1,5 +1,5 @@
 # Queue Extract and Transformation library
-[![Go Report Card](https://goreportcard.com/badge/github.com/icemobilelab/qet)](https://goreportcard.com/report/github.com/icemobilelab/qet)
+[![Go Report Card](https://goreportcard.com/badge/github.com/rormartin/qet)](https://goreportcard.com/report/github.com/rormartin/qet)
 [![License: LGPL v3](https://img.shields.io/badge/License-LGPL%20v3-blue.svg)](https://www.gnu.org/licenses/lgpl-3.0)
 
 A helper library to help to implement ETL process or process that
@@ -66,19 +66,19 @@ The errors managed by the retry mechanism are:
 To obtain the library:
 
 ```
-go get github.com/icemobilelab/qet
+go get github.com/rormartin/qet
 ```
 
 Libraries to include:
 * base transformation suite and processor:
-  `github.com/icemobilelab/qet/pkg/transform`
-* RabbitMQ data source: `github.com/icemobilelab/qet/pkg/rabbitmq`
-* Kafka data source: `github.com/icemobilelab/qet/pkg/kafka`
+  `github.com/rormartin/qet/pkg/transform`
+* RabbitMQ data source: `github.com/rormartin/qet/pkg/rabbitmq`
+* Kafka data source: `github.com/rormartin/qet/pkg/kafka`
 
 ## Library dependencies
 
-The dependencies are managed using the standard
-[Dep](https://golang.github.io/dep/).
+The dependencies are managed using [Go
+Modules](https://blog.golang.org/using-go-modules)
 * [Mergo](https://github.com/imdario/mergo) as a helper for the
   transformation library to inject data for the template
   transformations

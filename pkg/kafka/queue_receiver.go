@@ -11,13 +11,13 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package kafka // import "github.com/icemobilelab/qet/pkg/kafka"
+package kafka // import "github.com/rormartin/qet/pkg/kafka"
 
 import (
 	"context"
-	"github.com/icemobilelab/qet/pkg/transform"
 	"github.com/lovoo/goka"
 	"github.com/lovoo/goka/codec"
+	"github.com/rormartin/qet/pkg/transform"
 	log "github.com/sirupsen/logrus"
 	"math"
 	"time"

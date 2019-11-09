@@ -11,12 +11,12 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-package rabbitmq // import "github.com/icemobilelab/qet/pkg/rabbitmq"
+package rabbitmq // import "github.com/rormartin/qet/pkg/rabbitmq"
 
 import (
 	"context"
 	"fmt"
-	"github.com/icemobilelab/qet/pkg/transform"
+	"github.com/rormartin/qet/pkg/transform"
 	log "github.com/sirupsen/logrus"
 	"github.com/streadway/amqp"
 	"math"
